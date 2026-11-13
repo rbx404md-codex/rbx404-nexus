@@ -1,0 +1,41 @@
+name: Build RBX404 NEXUS
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack project.zip
+        run: |
+          if [ -f project.zip ]; then unzip -o project.zip; fi
+          ls -la
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('**/platformio.ini') }}
+      - name: Install tools
+        run: pip install platformio esptool==4.7.0
+      - name: Build
+        run: pio run
+      - name: Make single flashable image
+        run: |
+          mkdir -p out
+          B=.pio/build/esp32dev
+          cp $B/firmware.bin $B/bootloader.bin $B/partitions.bin out/
+          BOOTAPP=$(find ~/.platformio -name boot_app0.bin | head -n1)
+          cp "$BOOTAPP" out/boot_app0.bin
+          esptool.py --chip esp32 merge_bin -o out/RBX404-NEXUS-factory.bin \
+            --flash_mode dio --flash_freq 40m --flash_size 4MB \
+            0x1000 out/bootloader.bin 0x8000 out/partitions.bin \
+            0xe000 out/boot_app0.bin 0x10000 out/firmware.bin
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RBX404-NEXUS-firmware
+          path: out/
